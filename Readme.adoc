@@ -1,13 +1,13 @@
 Run with:
 
-```shell
+```console
 mvn spring-boot:run
 ```
 
 Producer data like this:
 
-```shell
-kafka-console-producer --bootstrap-server localhost:9092 --topic test --property "parse.key=true" --property "key.separator=:"
+```console
+docker compose exec broker1 kafka-console-producer --bootstrap-server broker1:9092 --topic test --property "parse.key=true" --property "key.separator=:"
 ```
 
 Then send events like the following on the console:
@@ -26,15 +26,15 @@ key9:{"value": "9"}
 
 You can consume your events for testing on the console like this:
 
-```shell
-kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property print.key=true --from-beginning
+```console
+docker compose exec broker1 kafka-console-consumer --bootstrap-server broker1:9092 --topic test --property print.key=true --from-beginning
 ```
 
 These event will be shown on the console and processed regularly.
 
 If you need to recreate the topic, just delete it and produce to it again:
 
-```shell
+```console
 docker-compose exec broker1 kafka-topics --bootstrap-server broker1:9092 --topic test --delete
 ```
 
@@ -57,19 +57,55 @@ But, while in this fatale scenario (where the application will always crash when
 
 Let's assume we have produced some data to a topic already as described above. Let's further assume that these events have been consumed already by the Spring application (i.e. run it first!).
 
+Start the spring application in a separate terminal and keep it running:
+
+```console
+mvn spring-boot:run
+```
+
 Now we disable the port forwarding to the second broker instance (which is not used a bootstrap server). Our tiny Kafka cluster won't realize that something is wrong as internal communication (inside the private docker network) will work as usual. But the application won't be able to access the second broker anymore.
 What will happen in such a case?
 
 Comment out the two lines where `broker2` or `broker3` exposes its port. Restart the container by running:
 
-```shell
+```console
 docker compose up -d
 ```
 
-When trying to consume from the topic, we will see errors:
+When trying to consume from the topic (on the host machine, not inside of the containers as shown above), we will see errors:
 
-```shell
+```console
 kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property print.key=true --from-beginning
 ```
 
 If you see an error stating that the group coordinator cannot be reached, you can try commenting the ports from the other container `broker3` (or `broker2`, depending on your choice before). Uncomment the port of the other container, then restart.
+
+You might see something like this in the spring application:
+
+```
+2025-04-29T10:59:47.923Z  INFO 144895 --- [     test-0-C-1] org.apache.kafka.clients.NetworkClient   : [Consumer clientId=client.test.consumer-0, groupId=test] Client requested disconnect from node 2147483644
+2025-04-29T10:59:47.926Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Discovered group coordinator localhost:39092 (id: 2147483644 rack: null)
+2025-04-29T10:59:47.927Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Group coordinator localhost:39092 (id: 2147483644 rack: null) is unavailable or invalid due to cause: coordinator unavailable. isDisconnected: false. Rediscovery will be attempted.
+2025-04-29T10:59:47.927Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Requesting disconnect from last known coordinator localhost:39092 (id: 2147483644 rack: null)
+2025-04-29T10:59:48.052Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Discovered group coordinator localhost:39092 (id: 2147483644 rack: null)
+2025-04-29T10:59:48.177Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.SubscriptionState    : [Consumer clientId=client.test.consumer-0, groupId=test] Truncation detected for partition test-0 at offset FetchPosition{offset=18, offsetEpoch=Optional[2], currentLeader=LeaderAndEpoch{leader=Optional[localhost:39092 (id: 3 rack: null)], epoch=6}}, resetting offset to the first offset known to diverge FetchPosition{offset=0, offsetEpoch=Optional[2], currentLeader=LeaderAndEpoch{leader=Optional[localhost:39092 (id: 3 rack: null)], epoch=6}}
+2025-04-29T10:59:48.401Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Attempt to heartbeat with Generation{generationId=1, memberId='client.test.consumer-0-6e15f9ce-df0e-464d-a6e9-1a4ba4b7fe91', protocol='range'} and group instance id Optional.empty failed due to UNKNOWN_MEMBER_ID, resetting generation
+2025-04-29T10:59:48.401Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Resetting generation and member id due to: encountered UNKNOWN_MEMBER_ID from HEARTBEAT response
+2025-04-29T10:59:48.401Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Request joining group due to: encountered UNKNOWN_MEMBER_ID from HEARTBEAT response
+2025-04-29T10:59:48.401Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Giving away all assigned partitions as lost since generation/memberID has been reset,indicating that consumer is in old state or no longer part of the group
+2025-04-29T10:59:48.401Z  INFO 144895 --- [     test-0-C-1] k.c.c.i.ConsumerRebalanceListenerInvoker : [Consumer clientId=client.test.consumer-0, groupId=test] Lost previously assigned partitions test-0
+2025-04-29T10:59:48.402Z  INFO 144895 --- [     test-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : test: partitions lost: [test-0]
+2025-04-29T10:59:48.403Z  INFO 144895 --- [     test-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : test: partitions revoked: [test-0]
+2025-04-29T10:59:48.404Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] (Re-)joining group
+2025-04-29T10:59:48.436Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Request joining group due to: need to re-join with the given member-id: client.test.consumer-0-5689d781-5d30-4b78-add7-dbf07b01cc50
+2025-04-29T10:59:48.437Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] (Re-)joining group
+2025-04-29T10:59:48.721Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Successfully joined group with generation Generation{generationId=1, memberId='client.test.consumer-0-5689d781-5d30-4b78-add7-dbf07b01cc50', protocol='range'}
+2025-04-29T10:59:48.721Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Finished assignment for group at generation 1: {client.test.consumer-0-5689d781-5d30-4b78-add7-dbf07b01cc50=Assignment(partitions=[test-0])}
+2025-04-29T10:59:48.801Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Successfully synced group in generation Generation{generationId=1, memberId='client.test.consumer-0-5689d781-5d30-4b78-add7-dbf07b01cc50', protocol='range'}
+2025-04-29T10:59:48.802Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Notifying assignor about the new Assignment(partitions=[test-0])
+2025-04-29T10:59:48.802Z  INFO 144895 --- [     test-0-C-1] k.c.c.i.ConsumerRebalanceListenerInvoker : [Consumer clientId=client.test.consumer-0, groupId=test] Adding newly assigned partitions: test-0
+2025-04-29T10:59:48.845Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=client.test.consumer-0, groupId=test] Found no committed offset for partition test-0
+2025-04-29T10:59:49.136Z  INFO 144895 --- [     test-0-C-1] o.a.k.c.c.internals.SubscriptionState    : [Consumer clientId=client.test.consumer-0, groupId=test] Resetting offset for partition test-0 to position FetchPosition{offset=0, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[localhost:39092 (id: 3 rack: null)], epoch=6}}.
+```
+
+Note that the consumer group offset has been reset. Further investigations is required to identify the root cause here. Most likely, the client wasn't able to fetch the offset from the respective partition and thus gave up after a while and reset the offset.
