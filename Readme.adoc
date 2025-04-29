@@ -1,0 +1,67 @@
+Run with:
+
+```shell
+mvn spring-boot:run
+```
+
+Producer data like this:
+
+```shell
+kafka-console-producer --bootstrap-server localhost:9092 --topic test --property "parse.key=true" --property "key.separator=:"
+```
+
+Then send events like the following on the console:
+
+```
+key1:{"value": "1"}
+key2:{"value": "2"}
+key3:{"value": "3"}
+key4:{"value": "4"}
+key5:{"value": "5"}
+key6:{"value": "6"}
+key7:{"value": "7"}
+key8:{"value": "8"}
+key9:{"value": "9"}
+```
+
+You can consume your events for testing on the console like this:
+
+```shell
+kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property print.key=true --from-beginning
+```
+
+These event will be shown on the console and processed regularly.
+
+== Testing error behavior of Kafka Spring
+
+More interesting events are these:
+
+```
+key3:{"value": "error"}
+key3:{"value": "crash"}
+```
+
+The first event will throw a RuntimeException in the application. However, because the `@Transactional` annotation of the Spring framework is used, this exception will get caught, a database rollback occurs (nothing to do in this example, though) and the application just continues processing new events. The offset of the error event is committed and the event will not be reprocessed again (at least not in regular operations). This might be or might not be the desired behavior.
+
+The second event causes the application to stop immediately without processing any further instructions. Particularly, there is no commit for the kafka event. Note, that this situation is well-known as a `poison pill`: Restarting the application is not sufficient for continuing the consumption from the topic as the event will always be processed again causing another crash (given that the crash happens deterministically).
+But, while in this fatale scenario (where the application will always crash when seeing the event), usually "poison pills" can be handled in several ways (of course considering that the application will not crash immediately). The event could be written to a dead letter queue in Kafka or sent to an external system. After having done that, the implementation needs to "seek" to the next offset after the poisin pill and continue from there. This is not happening automatically.
+
+== Testing the behavior if one broker is down
+
+Let's assume we have produced some data to a topic already as described above. Let's further assume that these events have been consumed already by the Spring application (i.e. run it first!).
+
+Now we disable the port forwarding to the second broker instance (which is not used a bootstrap server). Our tiny Kafka cluster won't realize that something is wrong as internal communication (inside the private docker network) will work as usual. But the application won't be able to access the second broker anymore.
+What will happen in such a case?
+
+Comment out the two lines where `broker1` exposes his port. Restart the container by running
+
+```shell
+docker compose up -d
+```
+
+When trying to consume from the topic, we will see an error now:
+
+```shell
+kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property print.key=true --from-beginning
+```
+
