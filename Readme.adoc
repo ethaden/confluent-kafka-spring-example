@@ -32,6 +32,13 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property
 
 These event will be shown on the console and processed regularly.
 
+If you need to recreate the topic, just delete it and produce to it again:
+
+```shell
+docker-compose exec broker1 kafka-topics --bootstrap-server broker1:9092 --topic test --delete
+```
+
+
 == Testing error behavior of Kafka Spring
 
 More interesting events are these:
@@ -53,15 +60,16 @@ Let's assume we have produced some data to a topic already as described above. L
 Now we disable the port forwarding to the second broker instance (which is not used a bootstrap server). Our tiny Kafka cluster won't realize that something is wrong as internal communication (inside the private docker network) will work as usual. But the application won't be able to access the second broker anymore.
 What will happen in such a case?
 
-Comment out the two lines where `broker1` exposes his port. Restart the container by running
+Comment out the two lines where `broker2` or `broker3` exposes its port. Restart the container by running:
 
 ```shell
 docker compose up -d
 ```
 
-When trying to consume from the topic, we will see an error now:
+When trying to consume from the topic, we will see errors:
 
 ```shell
 kafka-console-consumer --bootstrap-server localhost:9092 --topic test --property print.key=true --from-beginning
 ```
 
+If you see an error stating that the group coordinator cannot be reached, you can try commenting the ports from the other container `broker3` (or `broker2`, depending on your choice before). Uncomment the port of the other container, then restart.
