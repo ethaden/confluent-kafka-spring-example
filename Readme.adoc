@@ -4,7 +4,7 @@ Run with:
 mvn spring-boot:run
 ```
 
-Producer data like this:
+Produce data like this:
 
 ```console
 docker compose exec broker1 kafka-console-producer --bootstrap-server broker1:9092 --topic test --property "parse.key=true" --property "key.separator=:"
